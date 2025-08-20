@@ -40,9 +40,6 @@ COPY . .
 RUN mkdir -p /app/weights /app/cache /app/output && \
     chmod 755 /app/weights /app/cache /app/output
 
-# Download model weights (if needed)
-# RUN python -c "from model import download_model; download_model()"
-
 # Create non-root user
 RUN groupadd -r chatterbox && useradd -r -g chatterbox chatterbox && \
     chown -R chatterbox:chatterbox /app
