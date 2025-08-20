@@ -1,0 +1,166 @@
+version: '3.8'
+
+services:
+  # TTS Gateway Service
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: tts-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - DEBUG=false
+      - LOG_LEVEL=info
+      - KOKKORO_ENDPOINT=http://kokkoro:8001
+      - CHATTERBOX_ENDPOINT=http://chatterbox:8002
+      - DEFAULT_TIMEOUT=60.0
+      - MAX_RETRIES=3
+    depends_on:
+      kokkoro:
+        condition: service_healthy
+      chatterbox:
+        condition: service_healthy
+    networks:
+      - tts-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/quick"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Kokkoro TTS Model Service
+  kokkoro:
+    build:
+      context: ./models/kokkoro
+      dockerfile: Dockerfile
+    container_name: tts-kokkoro
+    expose:
+      - "8001"
+    environment:
+      - PORT=8001
+      - MODEL_NAME=kokkoro
+      - PRELOAD_MODEL=true
+      - LOG_LEVEL=info
+      - MAX_WORKERS=1
+      - CACHE_SIZE=100
+    networks:
+      - tts-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - kokkoro-cache:/app/cache
+      - kokkoro-weights:/app/weights
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  # Chatterbox TTS Model Service  
+  chatterbox:
+    build:
+      context: ./models/chatterbox
+      dockerfile: Dockerfile
+    container_name: tts-chatterbox
+    expose:
+      - "8002"
+    environment:
+      - PORT=8002
+      - MODEL_NAME=chatterbox
+      - PRELOAD_MODEL=true
+      - LOG_LEVEL=info
+      - MAX_WORKERS=1
+      - CACHE_SIZE=100
+    networks:
+      - tts-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - chatterbox-cache:/app/cache
+      - chatterbox-weights:/app/weights
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+
+  # Optional: Redis for caching (uncomment if needed)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: tts-redis
+  #   expose:
+  #     - "6379"
+  #   networks:
+  #     - tts-network
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes
+  #   volumes:
+  #     - redis-data:/data
+
+  # Optional: Monitoring with Prometheus (uncomment if needed)
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: tts-prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - tts-network
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #     - prometheus-data:/prometheus
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #     - '--web.console.libraries=/etc/prometheus/console_libraries'
+  #     - '--web.console.templates=/etc/prometheus/consoles'
+
+networks:
+  tts-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  kokkoro-cache:
+    driver: local
+  kokkoro-weights:
+    driver: local
+  chatterbox-cache:
+    driver: local
+  chatterbox-weights:
+    driver: local
+  # redis-data:
+  #   driver: local
+  # prometheus-data:
+  #   driver: local
